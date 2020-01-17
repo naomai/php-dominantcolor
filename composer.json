@@ -1,0 +1,19 @@
+{
+	"name": "naomai/php-dominantcolor",
+	"description": "Find dominant colors in an image using K-means clustering",
+    "require": {
+        "php": ">=7.0",
+        "bdelespierre/php-kmeans": "@dev"
+    },
+	"repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/naomai/php-dominantcolor"
+        }
+    ],
+	"autoload": {
+        "psr-4": { 
+			"Naomai\\": "src/" 
+		}
+    }
+}
