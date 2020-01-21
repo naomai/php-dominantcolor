@@ -4,12 +4,12 @@ This library extracts dominant colors from images - those, which are most likely
 
 ![Album arts example](example/albums.jpg)
 
-The library uses [K-means clustering](https://en.wikipedia.org/wiki/K-means_clustering) method to group image pixels into different *color bins*. Those colors are then evaluated by their saturation and differences between others. Two of them are picked as *trully dominant* (primary and secondary).
+The library uses [K-means clustering](https://en.wikipedia.org/wiki/K-means_clustering) method to group image pixels into different *color bins*. Those colors are then evaluated by their saturation and differences between others. Two of them are picked as *most prominent* (primary and secondary).
 
 
 ## Usage
 
-We want to find dominant colors with three additional colors from image ```heart.png```.
+We want to find most prominent colors with three additional colors from image ```heart.png```.
 ```PHP
 $imageSrc = "heart.png";
 $totalNumberOfColors = 5; // primary + secondary + 3 additional
