@@ -12,6 +12,7 @@ class DominantColor{
 	const CalcWidth = 100;
 	const CalcHeight = 100;
 	
+	public static $config;
 
 	public static function fromGD($gdImage, int $colorCount = 2){
 		$colorCount = max($colorCount, 2); // at least 2 colors - primary and secondary
@@ -65,12 +66,13 @@ class DominantColor{
 				$xRGB = imagecolorat($gdImage, floor($x), floor($y));
 				$aRGB = ColorConversion::hex2rgb($xRGB);
 				$aHSV = ColorConversion::rgb2hsv($aRGB[0], $aRGB[1], $aRGB[2]);
+				
 				// convert HSV to coordinates in cone
 				$pr = $aHSV[1] * $aHSV[2]; // radius
 				
 				$px = sin($aHSV[0] * 2 * M_PI) * $pr;
 				$py = cos($aHSV[0] * 2 * M_PI) * $pr;
-				$pz = $aHSV[2]/3;
+				$pz = $aHSV[2] * self::$config->kspace->valueDistanceMultiplier;
 				
 				$space->addPoint([$px, $py, $pz], [$aHSV, $xRGB]);
 			}
@@ -107,12 +109,19 @@ class DominantColor{
 		return ['clusters'=>$clusterScore, 'maxCount'=>$maxCount, 'maxS'=>$maxS, 'maxV'=>$maxV];
 	}
 	private static function findPrimaryColor(array &$scoreArray){
+		$priConfig = self::$config->primary;
 		foreach($scoreArray['clusters'] as &$c){
-			$sf = $c['s'] / $scoreArray['maxS'];
-			$vf = $c['v'] / $scoreArray['maxV'];
-			$cf = $c['count'] / $scoreArray['maxCount'];
-			$scorePrimary = 5*$sf + 5*$vf + 1*$cf;
+			[$sf, $vf, $cf] = self::normalizeColor($c, $scoreArray);
+			$scorePrimary = $sf * $priConfig->saturationMultiplier;
+			$scorePrimary += $vf * $priConfig->valueMultiplier;
+			$scorePrimary += $cf * $priConfig->countMultiplier;
 			$c['p_score'] = $scorePrimary;
+			
+			if($c['s'] < $scoreArray['maxS'] * self::$config->saturationLowThreshold) 
+				$c['p_score'] *= self::$config->saturationLowMultiplier; 
+			if($c['v'] < $scoreArray['maxV'] * self::$config->valueLowThreshold) 
+				$c['p_score'] *= self::$config->valueLowMultiplier;
+			
 		}
 		$maxPScore = 0;
 		$primaryIdx = 0;
@@ -127,28 +136,33 @@ class DominantColor{
 		return $scoreArray['clusters'][$primaryIdx];
 	}
 	private static function findSecondaryColor(array &$scoreArray){
+		$secConfig = self::$config->secondary;
 		$maxSScore = 0;
 		$secondaryIdx = 0;
 		
 		$primary = $scoreArray['clusters'][$scoreArray['primary']['idx']];
 		
 		array_walk($scoreArray['clusters'], function(&$c, $idx)
-			use(&$maxSScore,&$secondaryIdx,$scoreArray,$primary){
+			use(&$maxSScore,&$secondaryIdx,$scoreArray,$primary,$secConfig){
 				
 			if($idx==$scoreArray['primary']['idx']) { // primary != secondary
 				$c['s_score']=0;
 				return;
 			}
-			$sf = $c['s'] / $scoreArray['maxS'];
-			$vf = $c['v'] / $scoreArray['maxV'];
-			$cf = $c['count'] / $scoreArray['maxCount'];
+			[$sf, $vf, $cf] = self::normalizeColor($c, $scoreArray);
+			
 			$distPrimary = $c['clusterObj']->getDistanceWith($primary['clusterObj']);
 			
-			$c['s_score'] = (4*$sf + 2*$vf) * (3*$cf + $distPrimary * 6);
-			$c['s_score'] -= $c['p_score']/3;
+			$c['s_score'] = $sf * $secConfig->saturationMultiplier;
+			$c['s_score'] += $vf * $secConfig->valueMultiplier;
+			$c['s_score'] *= ($cf * $secConfig->countMultiplier + $distPrimary * $secConfig->priDistanceMultiplier);
+			$c['s_score'] -= $c['p_score'] * $secConfig->priScoreDifferenceMultiplier;
 			
-			if($c['s'] < $scoreArray['maxS'] * 0.3) $c['s_score'] *= 0.65;
-			if($c['v'] < $scoreArray['maxV'] * 0.1) $c['s_score'] *= 0.55;
+			if($sf < self::$config->saturationLowThreshold) 
+				$c['s_score'] *= self::$config->saturationLowMultiplier; 
+			if($vf < self::$config->valueLowThreshold) 
+				$c['s_score'] *= self::$config->valueLowMultiplier;
+			
 			
 			if($c['s_score'] > $maxSScore){
 				$maxSScore = $c['s_score'];
@@ -159,8 +173,49 @@ class DominantColor{
 		return $scoreArray['clusters'][$secondaryIdx];
 	}
 	
+	private static function normalizeColor(array $cluster, array $scoreArray){
+		$sf = $cluster['s'] / $scoreArray['maxS'];
+		$vf = $cluster['v'] / $scoreArray['maxV'];
+		$cf = $cluster['count'] / $scoreArray['maxCount'];
+		$sf *= self::nlcurve($vf); //decrease saturation for dark colors
+		return [$sf, $vf, $cf];
+	}
+	
+	private static function nlcurve($x){
+		// 0>0 0.1>0.05 0.5>0.75 0.8>0.95 1>1
+		// 5.85317x^4−13.254x^3+8.6379x^2−0.237103x
+		return ColorConversion::clamp(5.85317 * $x**4 - 13.254 * $x**3 + 8.6379 * $x**2 - 0.237103 * $x, 0, 1);
+	}
+	
 	// util class stuff
 	public function __construct(){
 		throw new \Exception(get_class() . " is an utility class and should be used statically");
 	}
+	
 }
+
+DominantColor::$config = (object)[
+	'kspace'=>(object)[
+		'valueDistanceMultiplier' => 0.3,
+	],
+	'primary'=>(object)[
+		// primary color is chosen by sum of:
+		'saturationMultiplier' => 5, // * normalized color saturation <this sat / max sat of all pixels>
+		'valueMultiplier' => 5, // * normalized color value <this val / max val of all pixels>
+		'countMultiplier' => 1,  // * normalized pixels count <this count / max count of all clusters>
+	],
+	'secondary'=>(object)[
+		'saturationMultiplier' => 4, 
+		'valueMultiplier' => 2,
+		'countMultiplier' => 3, 
+		
+		'priDistanceMultiplier' => 6, // color difference <distance in k-space from primary>
+		'priScoreDifferenceMultiplier' => 0.33, // subtract color's primary score * x from secondary
+	],
+	
+	// scores are lowered by multiplier when normalized threshold is below these /to elimitate dark or grayish colors/:
+	'saturationLowThreshold' => 0.3,
+	'saturationLowMultiplier' => 0.75,
+	'valueLowThreshold' => 0.1,
+	'valueLowMultiplier' => 0.55,
+];	
