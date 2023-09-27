@@ -3,6 +3,7 @@ namespace Naomai;
 
 use Naomai\Utils\ColorConversion;
 use KMeans\Space;
+use KMeans\Cluster;
 
 class DominantColor{
 
@@ -19,8 +20,8 @@ class DominantColor{
 		
 		$space = self::imageToKSpace($gdImage);
 		
-		$clusters = $space->solve($colorCount, Space::SEED_DASV);
-
+		$clusters = $space->solve($colorCount,null,Cluster::INIT_KMEANS_PLUS_PLUS);
+		
 		/* score calculation for primary and secondary dominant color */
 		$scores = self::createScoreArray($clusters);
 		$primary = self::findPrimaryColor($scores);

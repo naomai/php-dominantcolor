@@ -4,9 +4,17 @@
     "keywords": ["color","dominant","common","scheme"],
 	"description": "Find dominant colors in an image using K-means clustering",
     "homepage": "https://github.com/naomai/php-dominantcolor",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tomasz Budzisz",
+            "email": "tmdvtb@gmail.com",
+            "role": "Developer"
+        }
+    ],
     "require": {
-        "php": ">=7.0",
-        "bdelespierre/php-kmeans": "1.0.0"
+        "php": ">=7.3",
+        "bdelespierre/php-kmeans": "2.2.0"
     },
 	"repositories": [
         {
